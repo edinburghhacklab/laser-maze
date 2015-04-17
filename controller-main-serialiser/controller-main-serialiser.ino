@@ -7,7 +7,7 @@
 // the current address in the EEPROM (i.e. which byte
 // we're going to write to next)
 
-const byte serial_no = 16;
+const byte serial_no = SERIAL_NUMBER_GOES_HERE;
 
 void setup()
 {
