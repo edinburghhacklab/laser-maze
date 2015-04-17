@@ -3,6 +3,7 @@
  */
  
 #include <SoftwareSerial.h>
+#include <EEPROM.h>
 
 // Pin defs
 const byte laser_broken   = 6;
@@ -12,8 +13,7 @@ const byte bus_rx         = 8;
 const byte bus_rf         = 7;
 const byte bus_de         = 16;
 
-// Constants
-const byte my_address     = 69;
+byte my_address           = 88; // temporary until serial read from EEPROM
 
 typedef enum state
 {
@@ -59,6 +59,9 @@ void setup()
   pinMode(laser_enabled, OUTPUT);
   pinMode(bus_rf,        OUTPUT);
   pinMode(bus_de,        OUTPUT);
+  
+  my_address = EEPROM.read(0);
+  
   set_bus_direction(RECEIVE);
   bus.begin(9600);
   
