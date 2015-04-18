@@ -25,17 +25,16 @@ def parse_line(line):
         return (None, None)
 
 
-class Node(object):
-    def __init__(self, index):
-        self.index = index
+class Game(object):
+    NODE_RETURN_DELAY = 2
 
-
-class GameState(object):
-    def __init__(self):
+    def __init__(self, auto_return=False):
         self.nodes = {}
         self.laser_broken = lambda i: None  # default to noop, set from outside
         self.n_lasers_broken = lambda: None  # "
         self.n_broken_threshold = 5
+
+        self.auto_return = auto_return
 
     def game_start(self):
         logger.info('Game Start!')
@@ -45,8 +44,11 @@ class GameState(object):
     def all_on(self):
         logger.info('Turning all the lasers')
         self.talker.send('\0{}{}'.format(chr(255), chr(2)))
-        #for node in self.nodes:  # iterating through keys
-        #    self.talker.send('\0{}{}'.format(chr(node), chr(2)))
+
+    def _laser_on_callback(self, index):
+        def laser_on():
+            self.talker.send('\0{}{}'.format(chr(index), chr(2)))
+        return laser_on
 
     @property
     def talker(self):
@@ -65,8 +67,11 @@ class GameState(object):
         if self.n_broken >= self.n_broken_threshold:
             self._n_lasers_broken()
 
+        if self.auto_return:
+            ioloop.IOLoop.instance().call_later(self.NODE_RETURN_DELAY,
+                                                self._laser_on_callback(index))
+
     def _n_lasers_broken(self):
-        logger.warn('{} lasers broken'.format(self.n_broken_threshold))
         self.n_lasers_broken()
 
     def _receive(self, line):
@@ -91,11 +96,14 @@ class GameState(object):
 def run_game(serial_device, baudrate):
     st = t.SerialTalker(serial_device, baudrate)
 
-    gs = GameState()
+    gs = Game(auto_return=True)
     gs.talker = st
 
-    repeat_on = ioloop.PeriodicCallback(gs.all_on, 3000)
-    repeat_on.start()
+    gs.laser_broken = lambda i: logger.warn('Laser {} broken!', i)
+    gs.n_lasers_broken = lambda: logger.error('Too many lasers broken!!')
+
+    #repeat_on = ioloop.PeriodicCallback(gs.all_on, 3000)
+    #repeat_on.start()
 
     ioloop.IOLoop.instance().call_later(2, gs.game_start)
     ioloop.IOLoop.instance().start()
