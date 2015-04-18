@@ -1,5 +1,7 @@
 const int tx_enable_pin = 4;
 const int max_node = 20;
+const int relay1_pin = 10;
+const int relay2_pin = 16;
 
 byte node = 0;
 byte command = 0;
@@ -7,7 +9,12 @@ int current_node = 1;
 unsigned long cycle_start;
 
 void setup() {
+  pinMode(relay1_pin, OUTPUT);
+  pinMode(relay2_pin, OUTPUT);
   pinMode(tx_enable_pin, OUTPUT);
+  
+  digitalWrite(relay1_pin, LOW);
+  digitalWrite(relay2_pin, LOW);
   digitalWrite(tx_enable_pin, LOW);
 
   // initialize USB serial  
