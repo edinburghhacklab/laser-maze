@@ -31,7 +31,7 @@ class SerialTalker(object):
     def send(self, message):
         """ Send over serial. """
         logger.debug("Serial Sending {!r}".format(message))
-        self.serial_file.write(str(message))
+        self.serial_file.write(message)
 
 
 def talk(serial_device, baudrate):
