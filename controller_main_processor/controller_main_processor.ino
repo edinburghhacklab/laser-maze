@@ -6,7 +6,7 @@
 #include <EEPROM.h>
 
 // Pin defs
-const byte laser_broken   = 6;      // From safety processor
+const byte laser_broken   = 6;      // From safety processor (HIGH=beam-broken)
 const byte laser_enable   = 5;      // Tell safety to enable laser
 const byte laser_override = 4;      // Tell safety to enter test mode
 const byte bus_tx         = 9;
@@ -38,12 +38,12 @@ typedef enum dir
 };
 
 const byte ACK = 1;
-const unsigned int time_allowed_in_test_mode = 5000;
+const unsigned long time_allowed_in_test_mode = 5000;
 
 // Globals
 byte my_address                     = 88; // temporary until serial read from EEPROM
-unsigned int time_entered_test_mode = 0;
-state mode = MODE_NORMAL;
+unsigned long time_entered_test_mode = 0;
+state mode = MODE_OFF;
 byte input_address                  = 0;
 byte input_command                  = 0;
 
@@ -70,6 +70,9 @@ void setup()
   pinMode(laser_override, OUTPUT);
   pinMode(bus_rf,         OUTPUT);
   pinMode(bus_de,         OUTPUT);
+  
+  digitalWrite(laser_enable, LOW);
+  digitalWrite(laser_override, LOW);
 
   my_address = EEPROM.read(0);
 
@@ -77,11 +80,10 @@ void setup()
   bus.begin(9600);
 
   Serial.begin(57600);
-
-  while (!Serial)
-  {
-    ; // wait for serial port to connect. Needed for Leonardo only
-  }
+  //while (!Serial)
+  //{
+    //; // wait for serial port to connect. Needed for Leonardo only
+  //}
 
   Serial.println("LAZORS!!");
   Serial.print("Serial: ");
@@ -97,18 +99,18 @@ void loop()
     char thing = Serial.read();
     if('n' == thing)
     {
-      Serial.println("mode normal");
+      Serial.println("->normal (console)");
       mode = MODE_NORMAL;
     }
     else if ('t' == thing)
     {
-            Serial.println("mode test");
+            Serial.println("->test (console)");
       mode = MODE_TEST;
       time_entered_test_mode = millis();
     }
     else if ('o' == thing)
     {
-            Serial.println("mode off");
+            Serial.println("->off (console)");
       mode = MODE_OFF;
     }
   }
@@ -140,7 +142,7 @@ void loop()
     // We have an address and a command
     if ((input_address > 0) && (input_command > 0))
     {
-      if (input_address == my_address)
+      if (input_address == my_address || input_address == 255)
       {
         if (SEND_STATE == input_command)
         {
@@ -148,26 +150,29 @@ void loop()
         }
         else if (SET_MODE_NORMAL == input_command)
         {
-          Serial.println("Set normal mode");
+          Serial.println("->normal (bus)");
           mode = MODE_NORMAL;
         }
         else if (SET_MODE_TEST == input_command)
         {
-          Serial.println("Set test mode");
+          Serial.println("->test (bus)");
           mode = MODE_TEST;
           time_entered_test_mode = millis();
         }
         else if (SET_MODE_OFF == input_command)
         {
-          Serial.println("Set off mode");
+          Serial.println("->off (bus)");
           mode = MODE_OFF;
         }
       }
-      
-      set_bus_direction(TRANSMIT);
-      bus.write(mode);
-      set_bus_direction(RECEIVE);
 
+      // reply with status, but not for broadcasts      
+      if (input_address == my_address) {
+        set_bus_direction(TRANSMIT);
+        bus.write(mode);
+        set_bus_direction(RECEIVE);
+      }
+      
       input_address = 0;
       input_command = 0;
     }
@@ -180,6 +185,7 @@ void loop()
     // If we have been in test mode too long, drop into normal mode
     if ((millis() - time_entered_test_mode) > time_allowed_in_test_mode)
     {
+      Serial.println("test->normal (timeout)");
       mode = MODE_NORMAL;
     }
     digitalWrite(laser_override, HIGH);
@@ -194,9 +200,13 @@ void loop()
   {
     if(digitalRead(laser_broken))
     {
+      Serial.println("normal->broken");
       mode = MODE_NORMAL_BROKEN;
     }
-    digitalWrite(laser_enable, HIGH);
+    else
+    {
+      digitalWrite(laser_enable, HIGH);
+    }
   }
   
   if(MODE_NORMAL_BROKEN == mode)
