@@ -10,6 +10,7 @@ setup(name='hacklab-lasers',
       install_requires=[
           'Logbook',
           'click',
+          'enum34',
           'pyserial',
           'tornado',
       ],

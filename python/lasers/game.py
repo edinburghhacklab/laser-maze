@@ -3,6 +3,9 @@
 import enum
 
 import logbook
+from tornado import ioloop
+
+from lasers import talker as t
 
 logger = logbook.Logger(__name__)
 
@@ -27,9 +30,9 @@ class Node(object):
         self.index = index
 
 
-def GameState(object):
+class GameState(object):
     def __init__(self):
-        self.talker = None  # Set externally, API
+        self.nodes = {}
 
     @property
     def talker(self):
@@ -37,13 +40,25 @@ def GameState(object):
 
     @talker.setter
     def talker(self, talker):
+        logger.debug('Setting talker')
         self._talker = talker
         talker.data_received = self._receive
+        talker.include_self = False
 
     def _receive(self, line):
         index, state = parse_line(line)
         if index is not None:
             logger.debug('Node {} in state {}', index, state)
+            self.nodes[index] = state
+
+
+def run_game(serial_device, baudrate):
+    st = t.SerialTalker(serial_device, baudrate)
+
+    gs = GameState()
+    gs.talker = st
+
+    ioloop.IOLoop.instance().start()
 
 
 def main():

@@ -4,6 +4,7 @@ import click
 import logbook
 import logbook.more
 
+from lasers import game
 from lasers import talker
 
 
@@ -29,9 +30,15 @@ def root(ctx, serial_device, baudrate, debug):
 
 
 @root.command()
-@click.pass_context
-def talk(ctx):
-    talker.talk(ctx.obj['serial_device'], ctx.obj['baudrate'])
+@click.pass_obj
+def talk(obj):
+    talker.talk(obj['serial_device'], obj['baudrate'])
+
+
+@root.command()
+@click.pass_obj
+def run_game(obj):
+    game.run_game(obj['serial_device'], obj['baudrate'])
 
 
 def main():
