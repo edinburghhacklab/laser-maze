@@ -93,10 +93,10 @@ class Game(object):
             self.nodes[index] = state
 
 
-def run_game(serial_device, baudrate):
+def run_game(serial_device, baudrate, auto_return):
     st = t.SerialTalker(serial_device, baudrate)
 
-    gs = Game(auto_return=True)
+    gs = Game(auto_return=auto_return)
     gs.talker = st
 
     gs.laser_broken = lambda i: logger.warn('Laser {} broken!', i)

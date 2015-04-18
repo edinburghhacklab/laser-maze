@@ -36,6 +36,7 @@ def talk(obj):
 
 
 @root.command()
+@click.option('--auto-return/--no-auto-return', default=True, help='Turn the lasers back on after 2s')
 @click.pass_obj
 def run_game(obj):
     game.run_game(obj['serial_device'], obj['baudrate'])
