@@ -2,6 +2,7 @@ const int tx_enable_pin = 4;
 const int max_node = 20;
 const int relay1_pin = 10;
 const int relay2_pin = 16;
+const int game_btn_pin = A3;
 
 byte node = 0;
 byte command = 0;
@@ -13,28 +14,45 @@ void setup() {
   pinMode(relay2_pin, OUTPUT);
   pinMode(tx_enable_pin, OUTPUT);
   
+  pinMode(game_btn_pin, INPUT_PULLUP);
+
   digitalWrite(relay1_pin, LOW);
   digitalWrite(relay2_pin, LOW);
   digitalWrite(tx_enable_pin, LOW);
 
   // initialize USB serial  
-  Serial.begin(57600);
-  while (!Serial);
+  /* Serial.begin(57600); */
+  /* while (!Serial); */
 
   // initialize RS485 serial
   Serial1.begin(9600);
   Serial1.flush();
   
-  Serial.println("ready");
+  //Serial.println("ready");
   
   // track the length of a full cycle over all of the nodes
   cycle_start = millis();
 }
 
 void loop() {
-  int response;
+    //int response;
+  if (!digitalRead(game_btn_pin)) {
+      // pullup, so low = pressed.
+      digitalWrite(tx_enable_pin, HIGH);
+      Serial1.write(0);
+      Serial1.write(255); // broadcast
+      Serial1.write(2); // 'set normal mode' cmd.
+      Serial1.flush();
+      digitalWrite(tx_enable_pin, LOW);
+      delay(20);
+      while (!digitalRead(game_btn_pin)); // spin
+  }
+  delay(500);
+  //digitalWrite(relay1_pin, !digitalRead(relay1_pin));
+}
+
   
-  if (Serial.available() > 0) {
+  /* if (Serial.available() > 0) {
     if (node==0) {
       node = Serial.read();
     } else {
@@ -43,21 +61,36 @@ void loop() {
         command = Serial.read();
       }
       if (command!=0) {
-        Serial.print("send ");
-        Serial.print(node);
-        Serial.print(" ");
-        Serial.println(command);
-        digitalWrite(tx_enable_pin, HIGH);
-        Serial1.write(0);
-        Serial1.write(node);
-        Serial1.write(command);
-        Serial1.flush();  
-        digitalWrite(tx_enable_pin, LOW);
-        node = 0;
-        command = 0;
-        response = receive_byte();
-        Serial.print("reply ");
-        Serial.println(response, DEC);
+          if (node == 253) {
+              digitalWrite(relay1_pin, command == '0'?LOW:HIGH);
+              Serial.print("relay1 ");
+              Serial.println(digitalRead(relay1_pin));
+              node = 0;
+              command = 0;
+              
+          } else if (node == 254) {
+              digitalWrite(relay2_pin, command == '0'?LOW:HIGH);
+              Serial.print("relay2 ");
+              Serial.println(digitalRead(relay2_pin));
+              node = 0;
+              command = 0;
+          } else {
+              Serial.print("send ");
+              Serial.print(node);
+              Serial.print(" ");
+              Serial.println(command);
+              digitalWrite(tx_enable_pin, HIGH);
+              Serial1.write(0);
+              Serial1.write(node);
+              Serial1.write(command);
+              Serial1.flush();  
+              digitalWrite(tx_enable_pin, LOW);
+              node = 0;
+              command = 0;
+              response = receive_byte();
+              Serial.print("reply ");
+              Serial.println(response, DEC);
+          }
       }
     }
   }
@@ -78,9 +111,9 @@ void loop() {
     //Serial.println(millis()-cycle_start);
     cycle_start = millis();
   }
-
+  
 }
-
+*/
 int send_and_receive(byte node, byte command) {
   int response;
   
