@@ -6,6 +6,7 @@ import logbook.more
 
 from lasers import game
 from lasers import talker
+from lasers import laser
 
 
 @click.group()
@@ -40,6 +41,13 @@ def talk(obj):
 @click.pass_obj
 def run_game(obj, auto_return):
     game.run_game(obj['serial_device'], obj['baudrate'], auto_return)
+
+
+@root.command()
+@click.option('--auto-return/--no-auto-return', default=True, help='Turn the lasers back on after 2s')
+@click.pass_obj
+def run_lasers(obj, auto_return):
+    laser.run_lasers(obj['serial_device'], obj['baudrate'], auto_return)
 
 
 def main():
