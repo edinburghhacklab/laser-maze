@@ -43,9 +43,9 @@ class LaserStateManager(object):
 
     def all_on(self):
         logger.info('Turning all the lasers')
-        #self.talker.send('\0{}{}'.format(chr(255), chr(2)))
-        for node in self.nodes:
-            self.talker.send('\0{}{}'.format(chr(node), chr(2)))
+        self.talker.send('\0{}{}'.format(chr(255), chr(2)))
+        #for node in self.nodes:
+        #    self.talker.send('\0{}{}'.format(chr(node), chr(2)))
 
     def _laser_on_callback(self, index):
         def laser_on():
@@ -86,8 +86,8 @@ class LaserStateManager(object):
             except KeyError:
                 logger.debug('Node {}: {}', index, state)
             else:
-                #if old_state != state:
-                logger.debug('Node {}: {} -> {}', index, old_state, state)
+                if old_state != state:
+                    logger.debug('Node {}: {} -> {}', index, old_state, state)
                 if (old_state, state) == (NodeState.normal, NodeState.broken):
                     # laser was just broken
                     logger.info('Laser broken {}', index)
