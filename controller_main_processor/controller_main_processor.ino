@@ -1,23 +1,20 @@
-// Use http://www.gammon.com.au/Arduino/RS485_protocol.zip
+/*
+ *
+ */
 #include "RS485_protocol.h"
+#include <SoftwareSerial.h>
+#include <EEPROM.h>
 
+// Pin defs
+const byte laser_broken   = 6;      // From safety processor (HIGH=beam-broken)
+const byte laser_enable   = 5;      // Tell safety to enable laser
+const byte laser_override = 4;      // Tell safety to enter test mode
+const byte bus_tx         = 9;
+const byte bus_rx         = 8;
+const byte bus_rf         = 7;
+const byte bus_de         = 16;
 
-// callback routines
-  
-void fWrite (const byte what)
-  {
-  Serial1.write (what);  
-  }
-  
-int fAvailable ()
-  {
-  return Serial1.available ();  
-  }
-
-int fRead ()
-  {
-  return Serial1.read ();  
-  }
+const byte MASTER_ADDR = 200;
 
 // Enums and constants for states, commands etc
 typedef enum state
@@ -43,242 +40,233 @@ typedef enum dir
   TRANSMIT
 };
 
-const int tx_enable_pin = 4;
-const int max_node = 20;
-const int relay1_pin = 10;
-const int relay2_pin = 16;
-const int game_btn_pin = A3;
+const byte ACK = 1;
+const unsigned long time_allowed_in_test_mode = 5000;
 
-byte node = 0;
-byte command = 0;
-int current_node = 1;
-unsigned long cycle_start;
+// Globals
+byte my_address                     = 88; // temporary until serial read from EEPROM
+unsigned long time_entered_test_mode = 0;
+state mode = MODE_OFF;
+byte input_src_address                  = 0;
+byte input_dst_address                  = 0;
+byte input_command                  = 0;
+byte input_command_arg              = 0;
 
-void setup() {
-  pinMode(relay1_pin, OUTPUT);
-  pinMode(relay2_pin, OUTPUT);
-  pinMode(tx_enable_pin, OUTPUT);
-  
-  pinMode(game_btn_pin, INPUT_PULLUP);
+#define SERIAL_DEBUG 1
 
-  digitalWrite(relay1_pin, LOW);
-  digitalWrite(relay2_pin, LOW);
-  digitalWrite(tx_enable_pin, LOW);
+SoftwareSerial bus(bus_rx, bus_tx);
 
-  // initialize USB serial  
-  /* Serial.begin(57600); */
-  /* while (!Serial); */
-
-  // initialize RS485 serial
-  Serial1.begin(14400);
-  Serial1.flush();
-  
-  //Serial.println("ready");
-  /*
-  // track the length of a full cycle over all of the nodes
-  cycle_start = millis();
-
-  for (int i = 2; i < 15; i++) {
-      digitalWrite(tx_enable_pin, HIGH);
-      Serial1.write(0);
-      Serial1.write(255); // broadcast
-      Serial1.write(4); // 'set test mode' cmd.
-      Serial1.flush();
-      digitalWrite(tx_enable_pin, LOW);
+void fWrite (const byte what)
+  {
+  bus.write (what);  
   }
-*/
+  
+int fAvailable ()
+  {
+  return bus.available ();  
+  }
+
+int fRead ()
+  {
+  return bus.read ();  
+  }
+  
+
+void set_bus_direction(byte value)
+{
+  if (TRANSMIT == value)
+  {
+    digitalWrite(bus_de, HIGH);
+    digitalWrite(bus_rf, HIGH);
+  }
+  else if (RECEIVE == value)
+  {
+    digitalWrite(bus_de, LOW);
+    digitalWrite(bus_rf, LOW);
+  }
 }
 
-void loop() {
 
-  int response;
-
-  // assemble message
-  byte msg [] = { 
-     200,
-     current_node,    // device
-     1,    // command, 1 get status, 2 = normal, 3 off, test 4,
-     0 // command arg 0
-  };
-
-
-  // send to slave  
-  //Serial.println("sending staus request");
+void setup()
+{
+  pinMode(laser_enable,   OUTPUT);
+  pinMode(laser_override, OUTPUT);
+  pinMode(bus_rf,         OUTPUT);
+  pinMode(bus_de,         OUTPUT);
   
-  digitalWrite (tx_enable_pin, HIGH);  // enable sending
-  sendMsg (fWrite, msg, sizeof msg);
-  Serial1.flush();
-  //delay (1);
-  digitalWrite (tx_enable_pin, LOW);  // disable sending
+  digitalWrite(laser_enable, HIGH); // laser OFF
+  digitalWrite(laser_override, HIGH); // Laser Test mode OFF
+
+  my_address = EEPROM.read(0);
+
+  set_bus_direction(RECEIVE);
+  bus.begin(14400);
+
+#ifdef SERIAL_DEBUG
+  Serial.begin(57600);
+  //while (!Serial)
+  //{
+    //; // wait for serial port to connect. Needed for Leonardo only
+  //}
+
+  Serial.println("LAZORS!!");
+  Serial.print("Serial: ");
+  Serial.print(my_address);
+#endif
+
+
+}
+
+// the loop function runs over and over again forever
+void loop()
+{
+
+#ifdef SERIAL_DEBUG  
+  if (Serial.available())
+  {
+    char thing = Serial.read();
+    if('n' == thing)
+    {
+      Serial.println("->normal (console)");
+      mode = MODE_NORMAL;
+    }
+    else if ('t' == thing)
+    {
+            Serial.println("->test (console)");
+      mode = MODE_TEST;
+      time_entered_test_mode = millis();
+    }
+    else if ('o' == thing)
+    {
+            Serial.println("->off (console)");
+      mode = MODE_OFF;
+    }
+  }
+#endif  
   
   
-  // receive response  
   byte buf [4];
-  byte received = recvMsg (fAvailable, fRead, buf, sizeof buf, 20);
   
+  byte received = recvMsg (fAvailable, fRead, buf, sizeof (buf),10);
+ 
+/* Serial.print("Rec = ");
+ Serial.print(received);
+    Serial.print(" ,");
+    Serial.print(buf[0]);
+    Serial.print(',');
+    Serial.println(buf[1]);
+*/
   if (received)
     {
-      Serial.print("response = ");
-      Serial.print(buf[0]); //src
-      Serial.print(" ,");
-      Serial.print(buf[1]); // dst
-      Serial.print(" ,");
-      Serial.print(buf[2]); // comand
-      Serial.print(" ,");
-      Serial.println(buf[3]); // command arg
-      if (buf[2] == RESPONSE_STATE && buf[3] == MODE_NORMAL_BROKEN)  
-      {
-        digitalWrite(relay1_pin, HIGH);
-        delay(2000);
-        digitalWrite(relay1_pin, LOW);
-        send_command(buf[0],SET_MODE_OFF);
-      }
-
-    }
-
-  
-
-  delay(20);
-
-  // assemble message
-  byte msg2 [] = { 
-     200, // src address
-     current_node,    // device
-     4,    // command, 1 get status, 2 = normal, test 4
-     0 // arg
-  };
-
-
-  // send to slave  
-  //Serial.println("sending Switch laser on command request");
-  
-  if (!digitalRead(game_btn_pin)) // spin
-  {
-    digitalWrite (tx_enable_pin, HIGH);  // enable sending
-    sendMsg (fWrite, msg2, sizeof msg2);
-    Serial1.flush();
-    delay (1);
-    digitalWrite (tx_enable_pin, LOW);  // disable sending
-    delay(15);
-  }
-
-  current_node++;
-  if (current_node > max_node) {
-    current_node = 1;
-    //Serial.println(millis()-cycle_start);
-    cycle_start = millis();
-
+      input_src_address = buf [0];
+      input_dst_address = buf [1]; /////
+      input_command = buf [2]; 
+      input_command_arg = buf [3]; 
     
-  }
-  //delay(15);
-  
+    // We have an address and a command
+    if ((input_dst_address > 0) && (input_command > 0))
+    {
+      if (input_dst_address == my_address ||  input_dst_address == 255)
+      {
+        if (SEND_STATE == input_command)
+        {
+          
+        }
+        else if (SET_MODE_NORMAL == input_command)
+        {
+          #ifdef SERIAL_DEBUG
+          Serial.println("->normal (bus)");
+          #endif
+          mode = MODE_NORMAL;
+        }
+        else if (SET_MODE_TEST == input_command)
+        {
+          #ifdef SERIAL_DEBUG
+          Serial.println("->test (bus)");
+          #endif
+          mode = MODE_TEST;
+          time_entered_test_mode = millis();
+        }
+        else if (SET_MODE_OFF == input_command)
+        {
+          #ifdef SERIAL_DEBUG
+          Serial.println("->off (bus)");
+          #endif
+          mode = MODE_OFF;
+        }
+      }
 
-  //delay(500);
-  //digitalWrite(relay1_pin, !digitalRead(relay1_pin));
-//}
-  
-  return;
-  
+      // reply with status, but not for broadcasts      
+      if (input_dst_address == my_address) {
  
-  if (Serial.available() > 0) {
-    if (node==0) {
-      node = Serial.read();
-    } else {
-      // we have a received a node address already, and it wasn't zero
-      if (Serial.available() > 0) {
-        command = Serial.read();
+        // assemble message
+        byte msg [] = { 
+           my_address,        //src
+           MASTER_ADDR,    //dest // master device
+           RESPONSE_STATE,
+           mode  
+        };
+        #ifdef SERIAL_DEBUG
+        Serial.print("sending status ");
+        Serial.println(mode);
+        #endif
+        set_bus_direction(TRANSMIT);
+        sendMsg (fWrite, msg, sizeof msg);
+        set_bus_direction(RECEIVE);
       }
-      if (command!=0) {
-          if (node == 253) {
-              digitalWrite(relay1_pin, command == '0'?LOW:HIGH);
-              Serial.print("relay1 ");
-              Serial.println(digitalRead(relay1_pin));
-              node = 0;
-              command = 0;
-              
-          } else if (node == 254) {
-              digitalWrite(relay2_pin, command == '0'?LOW:HIGH);
-              Serial.print("relay2 ");
-              Serial.println(digitalRead(relay2_pin));
-              node = 0;
-              command = 0;
-          } else {
-              Serial.print("send ");
-              Serial.print(node);
-              Serial.print(" ");
-              Serial.println(command);
-              digitalWrite(tx_enable_pin, HIGH);
-              Serial1.write(0);
-              Serial1.write(node);
-              Serial1.write(command);
-              Serial1.flush();  
-              digitalWrite(tx_enable_pin, LOW);
-              node = 0;
-              command = 0;
-              response = receive_byte();
-              Serial.print("reply ");
-              Serial.println(response, DEC);
-          }
-      }
+      
+      input_src_address = 0;
+      input_dst_address = 0;
+      input_command = 0;
+      input_command_arg = 0;
+
+    }
+  } // if recived
+
+
+  // Handle operating modes
+  if (MODE_TEST == mode)
+  {
+    // If we have been in test mode too long, drop into normal mode
+    if ((millis() - time_entered_test_mode) > time_allowed_in_test_mode)
+    {
+      #ifdef SERIAL_DEBUG
+      Serial.println("test->normal (timeout)");
+      #endif
+      mode = MODE_NORMAL;
+    }
+    digitalWrite(laser_override, LOW);
+    digitalWrite(laser_enable, LOW);
+  }
+  else
+  {
+    digitalWrite(laser_override, HIGH);
+  }
+  
+  if(MODE_NORMAL == mode)
+  {
+    if(digitalRead(laser_broken))
+    {
+      #ifdef SERIAL_DEBUG
+      Serial.println("normal->broken");
+      #endif
+      mode = MODE_NORMAL_BROKEN;
+    }
+    else
+    {
+      digitalWrite(laser_enable, LOW); // switch laser ON
     }
   }
-
-  unsigned long start = millis();
-  //response = send_and_receive(current_node, 1);
-  if (response!=-1) {
-    //Serial.println(millis()-start);
-    Serial.print("qreply ");
-    Serial.print(current_node);
-    Serial.print(" ");
-    Serial.println(response, DEC);
+  
+  if(MODE_NORMAL_BROKEN == mode)
+  {
+    digitalWrite(laser_enable, HIGH); // switch laser OFF
   }
   
-  current_node++;
-  if (current_node > max_node) {
-    current_node = 1;
-    //Serial.println(millis()-cycle_start);
-    cycle_start = millis();
+  if(MODE_OFF == mode)
+  {
+    digitalWrite(laser_enable, HIGH); // switch laser OFF
   }
-  delay(1000);
-}
-
-int send_command(byte node, byte command) {
-  int response;
- 
-  // assemble message
-  byte msg [] = { 
-     200,
-     node,    // device
-     command,    // command, 1 get status, 2 = normal, 3 off, test 4,
-     0 // command arg 0
-  };
-
-  digitalWrite (tx_enable_pin, HIGH);  // enable sending
-  sendMsg (fWrite, msg, sizeof msg);
-  Serial1.flush();
-  digitalWrite (tx_enable_pin, LOW);  // disable sending
-  delay(10);
-  return 0;
-  
-}
-
-int receive_byte() {
-  unsigned long start;
-  int response = -1;
-
-  // keep trying to read a byte until the response is not -1 or 0
-  // or until we run out of time
-  start = millis();
-  while (millis()-start < 5 && (response==-1 || response==0)) {
-    response = Serial1.read();
-  }
-  
-  // always return -1 for invalid, or a postive number
-  if (response==0) {
-    response = -1;
-  }
-  
-  return response;
 }
 
 
